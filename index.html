@@ -6,7 +6,91 @@
 <meta name="theme-color" content="#16a34a">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="LipidCoach">
+<meta name="mobile-web-app-capable" content="yes">
 <title>LipidCoach</title>
+<link rel="manifest" href="manifest.json">
+<link rel="icon" type="image/png" href="favicon.png">
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
+<style>
+/* ── PWA INSTALL BANNER ─────────────────────────────────────── */
+#pwa-install-bar {
+  position: fixed;
+  bottom: 80px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: calc(100% - 32px);
+  max-width: 448px;
+  background: linear-gradient(135deg, #16a34a, #065f46);
+  color: #fff;
+  border-radius: 16px;
+  box-shadow: 0 8px 32px rgba(22,163,74,0.45);
+  z-index: 9999;
+  display: none;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 16px;
+  animation: slideUp 0.4s cubic-bezier(.34,1.56,.64,1) both;
+}
+#pwa-install-bar.visible { display: flex; }
+@keyframes slideUp {
+  from { opacity:0; transform: translateX(-50%) translateY(24px); }
+  to   { opacity:1; transform: translateX(-50%) translateY(0); }
+}
+#pwa-install-bar img { width: 40px; height: 40px; border-radius: 10px; flex-shrink:0; }
+#pwa-install-bar .pwa-text { flex:1; }
+#pwa-install-bar .pwa-text strong { display:block; font-size:14px; font-weight:700; }
+#pwa-install-bar .pwa-text span { font-size:11px; opacity:.85; }
+#pwa-btn-install {
+  background: #fff;
+  color: #16a34a;
+  border: none;
+  border-radius: 10px;
+  padding: 8px 14px;
+  font-size: 13px;
+  font-weight: 700;
+  cursor: pointer;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+#pwa-btn-dismiss {
+  background: none;
+  border: none;
+  color: rgba(255,255,255,0.7);
+  font-size: 20px;
+  cursor: pointer;
+  padding: 0 2px;
+  line-height: 1;
+}
+/* iOS manual install hint */
+#ios-install-hint {
+  position: fixed;
+  bottom: 80px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: calc(100% - 32px);
+  max-width: 448px;
+  background: #1e293b;
+  color: #f1f5f9;
+  border-radius: 16px;
+  box-shadow: 0 8px 32px rgba(0,0,0,0.4);
+  z-index: 9999;
+  display: none;
+  flex-direction: column;
+  gap: 8px;
+  padding: 16px;
+  font-size: 13px;
+  animation: slideUp 0.4s cubic-bezier(.34,1.56,.64,1) both;
+}
+#ios-install-hint.visible { display: flex; }
+#ios-install-hint .ios-close {
+  position: absolute; top: 10px; right: 14px;
+  background: none; border: none; color: #94a3b8;
+  font-size: 20px; cursor: pointer;
+}
+#ios-install-hint strong { font-size: 14px; color: #fff; }
+#ios-install-hint ol { margin: 4px 0 0 16px; padding: 0; line-height: 1.8; color: #cbd5e1; }
+</style>
 <script>/**
  * @license React
  * react.production.min.js
@@ -1906,5 +1990,90 @@ function App() {
 
 ReactDOM.createRoot(document.getElementById('app')).render(React.createElement(App));
 </script>
+
+<!-- PWA INSTALL BANNER (Android/Desktop) -->
+<div id="pwa-install-bar">
+  <img src="icon-192.png" alt="LipidCoach">
+  <div class="pwa-text">
+    <strong>Install LipidCoach</strong>
+    <span>Works offline &middot; No app store needed</span>
+  </div>
+  <button id="pwa-btn-install">Install</button>
+  <button id="pwa-btn-dismiss" title="Dismiss">&#x2715;</button>
+</div>
+
+<!-- iOS INSTALL HINT -->
+<div id="ios-install-hint">
+  <button class="ios-close" id="ios-close-btn">&#x2715;</button>
+  <strong>&#128242; Install LipidCoach on iPhone</strong>
+  <ol>
+    <li>Tap the <strong>Share</strong> button at the bottom of Safari</li>
+    <li>Tap <strong>"Add to Home Screen"</strong></li>
+    <li>Tap <strong>Add</strong> &mdash; opens like a real app!</li>
+  </ol>
+</div>
+
+<script>
+if ('serviceWorker' in navigator) {
+  window.addEventListener('load', function() {
+    navigator.serviceWorker.register('./sw.js')
+      .then(function(reg) { console.log('SW registered:', reg.scope); })
+      .catch(function(err) { console.error('SW error:', err); });
+  });
+}
+
+var deferredPrompt = null;
+var installBar  = document.getElementById('pwa-install-bar');
+var installBtn  = document.getElementById('pwa-btn-install');
+var dismissBtn  = document.getElementById('pwa-btn-dismiss');
+var iosHint     = document.getElementById('ios-install-hint');
+var iosCloseBtn = document.getElementById('ios-close-btn');
+
+var isIOS = /iphone|ipad|ipod/i.test(navigator.userAgent) && !window.MSStream;
+var isStandalone = window.matchMedia('(display-mode: standalone)').matches || navigator.standalone === true;
+
+if (!isStandalone) {
+  if (isIOS) {
+    if (!sessionStorage.getItem('ios-hint-shown')) {
+      setTimeout(function() {
+        iosHint.classList.add('visible');
+        sessionStorage.setItem('ios-hint-shown', '1');
+      }, 2000);
+    }
+  } else {
+    window.addEventListener('beforeinstallprompt', function(e) {
+      e.preventDefault();
+      deferredPrompt = e;
+      if (!localStorage.getItem('pwa-dismissed')) {
+        installBar.classList.add('visible');
+      }
+    });
+  }
+}
+
+installBtn.addEventListener('click', function() {
+  if (!deferredPrompt) return;
+  deferredPrompt.prompt();
+  deferredPrompt.userChoice.then(function(result) {
+    deferredPrompt = null;
+    installBar.classList.remove('visible');
+  });
+});
+
+dismissBtn.addEventListener('click', function() {
+  installBar.classList.remove('visible');
+  localStorage.setItem('pwa-dismissed', '1');
+});
+
+iosCloseBtn.addEventListener('click', function() {
+  iosHint.classList.remove('visible');
+});
+
+window.addEventListener('appinstalled', function() {
+  installBar.classList.remove('visible');
+  deferredPrompt = null;
+});
+</script>
 </body>
 </html>
+
