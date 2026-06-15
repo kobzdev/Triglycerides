@@ -991,9 +991,12 @@ function CheckItem({ emoji, label, checked, onToggle }) {
 }
 
 function ImpactTag({ impact }) {
-  const map = { excellent: ['🟢','Excellent','tag-green'], moderate: ['🟡','Moderate','tag-amber'], avoid: ['🔴','Avoid','tag-red'] };
+  const map = { excellent: ['🟢','Exc','tag-green'], moderate: ['🟡','Mod','tag-amber'], avoid: ['🔴','Avoid','tag-red'] };
   const [icon, label, cls] = map[impact] || map.moderate;
-  return React.createElement('span', { className: `tag ${cls}` }, icon, ' ', label);
+  return React.createElement('span', {
+    className: 'tag ' + cls,
+    style: { whiteSpace: 'nowrap', flexShrink: 0, fontSize: 11, padding: '3px 7px' }
+  }, icon, ' ', label);
 }
 
 function Toast({ msg }) {
@@ -1389,10 +1392,14 @@ function Dashboard({ darkMode, setDarkMode }) {
 }
 
 function FoodTracker() {
+  const { useState: useState2, useEffect: useEffect2, useRef } = React;
   const [search, setSearch] = useState('');
   const [activecat, setActiveCat] = useState('All');
   const [log, setLog] = useState(() => loadState('foodlog', []));
   const [toast, setToast] = useState(null);
+  const [editEntry, setEditEntry] = useState(null); // {index, entry, qty}
+  const [deleteIndex, setDeleteIndex] = useState(null);
+  const [showAllLog, setShowAllLog] = useState(false);
   const cats = ['All', ...new Set(FOOD_DB.map(f => f.cat))];
 
   const showToast = (msg) => { setToast(msg); setTimeout(() => setToast(null), 2500); };
@@ -1403,54 +1410,175 @@ function FoodTracker() {
     return inCat && inSearch;
   });
 
+  const todayStr = new Date().toDateString();
   const addFood = (food) => {
-    const entry = { ...food, time: new Date().toISOString(), date: new Date().toDateString() };
+    const entry = { ...food, qty: 1, time: new Date().toISOString(), date: todayStr, uid: Date.now() + Math.random() };
     const newLog = [entry, ...log];
     setLog(newLog); saveState('foodlog', newLog);
-    showToast(`Added ${food.name} ✓`);
+    showToast('Added ' + food.name + ' ✓');
   };
 
-  const todayLog = log.filter(f => f.date === new Date().toDateString());
-  const totalCal = todayLog.reduce((s, f) => s + f.cal, 0);
+  const removeEntry = (uid) => {
+    const newLog = log.filter(e => e.uid !== uid);
+    setLog(newLog); saveState('foodlog', newLog);
+    setDeleteIndex(null);
+    showToast('Removed ✓');
+  };
+
+  const saveEdit = () => {
+    if (!editEntry) return;
+    const qty = Math.max(0.5, parseFloat(editEntry.qty) || 1);
+    const newLog = log.map(e => e.uid === editEntry.uid
+      ? { ...e, qty,
+          cal: Math.round(e._baseCal * qty),
+          pro: Math.round(e._basePro * qty * 10) / 10,
+          carb: Math.round(e._baseCarb * qty * 10) / 10,
+          fat: Math.round(e._baseFat * qty * 10) / 10,
+          fiber: Math.round(e._baseFiber * qty * 10) / 10,
+        }
+      : e
+    );
+    setLog(newLog); saveState('foodlog', newLog);
+    setEditEntry(null);
+    showToast('Updated ✓');
+  };
+
+  // Ensure base values exist for editable entries
+  const enrichLog = (l) => l.map(e => ({
+    ...e,
+    uid: e.uid || (e.time + e.name),
+    qty: e.qty || 1,
+    _baseCal: e._baseCal || e.cal,
+    _basePro: e._basePro || e.pro,
+    _baseCarb: e._baseCarb || e.carb,
+    _baseFat: e._baseFat || e.fat,
+    _baseFiber: e._baseFiber || e.fiber,
+  }));
+
+  const todayLog = enrichLog(log.filter(f => f.date === todayStr));
+  const shownLog = showAllLog ? todayLog : todayLog.slice(0, 4);
+  const totalCal = todayLog.reduce((s, f) => s + (f.cal || 0), 0);
+  const totalPro = Math.round(todayLog.reduce((s, f) => s + (f.pro || 0), 0));
+  const totalFiber = Math.round(todayLog.reduce((s, f) => s + (f.fiber || 0), 0));
 
   return React.createElement('div', { className: 'page' },
     toast && React.createElement(Toast, { msg: toast }),
+
+    // ── EDIT MODAL ──────────────────────────────────────────────
+    editEntry && React.createElement('div', {
+      style: {
+        position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.55)',
+        zIndex: 1000, display: 'flex', alignItems: 'flex-end', justifyContent: 'center'
+      },
+      onClick: (e) => { if (e.target === e.currentTarget) setEditEntry(null); }
+    },
+      React.createElement('div', {
+        style: {
+          background: 'var(--card-bg)', borderRadius: '20px 20px 0 0',
+          padding: '24px 20px 40px', width: '100%', maxWidth: 480,
+          boxShadow: '0 -8px 32px rgba(0,0,0,0.2)'
+        }
+      },
+        React.createElement('div', { style: { display: 'flex', alignItems: 'center', gap: 12, marginBottom: 20 } },
+          React.createElement('div', { style: { fontSize: 32 } }, editEntry.emoji),
+          React.createElement('div', null,
+            React.createElement('div', { style: { fontWeight: 700, fontSize: 16 } }, editEntry.name),
+            React.createElement('div', { style: { fontSize: 12, color: 'var(--text-muted)' } }, 'Base: ' + (editEntry._baseCal || editEntry.cal) + ' kcal per serving')
+          )
+        ),
+        React.createElement('div', { style: { marginBottom: 16 } },
+          React.createElement('div', { style: { fontSize: 13, fontWeight: 700, marginBottom: 8, color: 'var(--text-secondary)' } }, 'SERVINGS / QUANTITY'),
+          React.createElement('div', { style: { display: 'flex', alignItems: 'center', gap: 12 } },
+            React.createElement('button', {
+              style: { width: 44, height: 44, borderRadius: 12, border: '2px solid var(--g500)', background: 'none', fontSize: 22, fontWeight: 700, color: 'var(--g600)', cursor: 'pointer', flexShrink: 0 },
+              onClick: () => setEditEntry(prev => ({ ...prev, qty: Math.max(0.5, (parseFloat(prev.qty) || 1) - 0.5) }))
+            }, '−'),
+            React.createElement('input', {
+              type: 'number', min: '0.5', step: '0.5',
+              value: editEntry.qty,
+              onChange: e => setEditEntry(prev => ({ ...prev, qty: e.target.value })),
+              style: {
+                flex: 1, padding: '10px 14px', borderRadius: 12, border: '1.5px solid var(--g500)',
+                background: 'var(--card-bg)', color: 'var(--text-primary)', fontSize: 18,
+                fontWeight: 700, textAlign: 'center', outline: 'none'
+              }
+            }),
+            React.createElement('button', {
+              style: { width: 44, height: 44, borderRadius: 12, border: '2px solid var(--g500)', background: 'none', fontSize: 22, fontWeight: 700, color: 'var(--g600)', cursor: 'pointer', flexShrink: 0 },
+              onClick: () => setEditEntry(prev => ({ ...prev, qty: (parseFloat(prev.qty) || 1) + 0.5 }))
+            }, '+')
+          )
+        ),
+        React.createElement('div', { style: { background: 'var(--surface2)', borderRadius: 12, padding: '10px 14px', marginBottom: 20, fontSize: 13, color: 'var(--text-secondary)' } },
+          '≈ ' + Math.round((editEntry._baseCal || editEntry.cal) * (parseFloat(editEntry.qty) || 1)) + ' kcal  · ' +
+          Math.round((editEntry._basePro || editEntry.pro) * (parseFloat(editEntry.qty) || 1) * 10) / 10 + 'g protein'
+        ),
+        React.createElement('div', { style: { display: 'flex', gap: 10 } },
+          React.createElement('button', {
+            style: { flex: 1, padding: '12px', borderRadius: 14, border: '1.5px solid var(--card-border)', background: 'none', color: 'var(--red)', fontWeight: 700, fontSize: 14, cursor: 'pointer' },
+            onClick: () => { removeEntry(editEntry.uid); setEditEntry(null); }
+          }, '🗑 Remove'),
+          React.createElement('button', {
+            style: { flex: 2, padding: '12px', borderRadius: 14, border: 'none', background: 'var(--g600)', color: '#fff', fontWeight: 700, fontSize: 14, cursor: 'pointer' },
+            onClick: saveEdit
+          }, 'Save Changes')
+        )
+      )
+    ),
+
     React.createElement('div', { className: 'page-header' },
       React.createElement('div', null,
         React.createElement('div', { className: 'page-title' }, 'Food Tracker'),
-        React.createElement('div', { className: 'page-subtitle' }, `${totalCal} kcal today`)
+        React.createElement('div', { className: 'page-subtitle' }, totalCal + ' kcal today')
       )
     ),
     React.createElement('div', { className: 'page-inner' },
-      // Today summary
+
+      // ── TODAY'S LOG ──────────────────────────────────────────────
       todayLog.length > 0 && React.createElement('div', null,
         React.createElement('div', { className: 'section-label' }, "Today's Log"),
         React.createElement('div', { className: 'card', style: { marginBottom: 16 } },
           React.createElement('div', { className: 'grid3', style: { marginBottom: 12 } },
             [
               { label: 'Calories', val: totalCal, unit: 'kcal', color: '#f59e0b' },
-              { label: 'Protein', val: Math.round(todayLog.reduce((s, f) => s + f.pro, 0)), unit: 'g', color: '#3b82f6' },
-              { label: 'Fiber', val: Math.round(todayLog.reduce((s, f) => s + f.fiber, 0)), unit: 'g', color: '#22c55e' },
+              { label: 'Protein',  val: totalPro,  unit: 'g',    color: '#3b82f6' },
+              { label: 'Fiber',    val: totalFiber, unit: 'g',   color: '#22c55e' },
             ].map((s, i) => React.createElement('div', { key: i, style: { textAlign: 'center' } },
               React.createElement('div', { style: { fontSize: 20, fontWeight: 900, color: s.color } }, s.val),
               React.createElement('div', { style: { fontSize: 10, color: 'var(--text-muted)', fontWeight: 700 } }, s.unit),
               React.createElement('div', { style: { fontSize: 11, color: 'var(--text-muted)' } }, s.label)
             ))
           ),
-          todayLog.slice(0, 4).map((f, i) =>
-            React.createElement('div', { key: i, className: 'food-item' },
-              React.createElement('div', { className: 'food-icon' }, f.emoji),
-              React.createElement('div', { className: 'food-meta' },
-                React.createElement('div', { className: 'food-name' }, f.name),
-                React.createElement('div', { className: 'food-cals' }, f.cal + ' kcal')
+          React.createElement('div', { style: { fontSize: 11, color: 'var(--text-muted)', marginBottom: 8, fontStyle: 'italic' } }, 'Tap an entry to edit or remove'),
+          shownLog.map((f, i) =>
+            React.createElement('div', {
+              key: f.uid || i,
+              style: {
+                display: 'flex', alignItems: 'center', gap: 10, padding: '9px 0',
+                borderBottom: i < shownLog.length - 1 ? '1px solid var(--card-border)' : 'none',
+                cursor: 'pointer'
+              },
+              onClick: () => setEditEntry({ ...f, qty: f.qty || 1 })
+            },
+              React.createElement('div', { className: 'food-icon', style: { flexShrink: 0 } }, f.emoji),
+              React.createElement('div', { style: { flex: 1, minWidth: 0 } },
+                React.createElement('div', { style: { fontSize: 14, fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' } }, f.name),
+                React.createElement('div', { style: { fontSize: 12, color: 'var(--text-muted)' } }, f.cal + ' kcal' + (f.qty && f.qty !== 1 ? ' · ×' + f.qty : ''))
               ),
-              React.createElement(ImpactTag, { impact: f.impact })
+              React.createElement('div', { style: { display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 4, flexShrink: 0 } },
+                React.createElement(ImpactTag, { impact: f.impact }),
+                React.createElement('div', { style: { fontSize: 10, color: 'var(--text-muted)', whiteSpace: 'nowrap' } }, '✏️ edit')
+              )
             )
-          )
+          ),
+          todayLog.length > 4 && React.createElement('button', {
+            style: { width: '100%', marginTop: 10, padding: '8px', borderRadius: 10, border: '1.5px solid var(--card-border)', background: 'none', color: 'var(--g600)', fontWeight: 700, fontSize: 13, cursor: 'pointer' },
+            onClick: () => setShowAllLog(p => !p)
+          }, showAllLog ? '▲ Show less' : '▼ Show all ' + todayLog.length + ' entries')
         )
       ),
 
-      // Search
+      // ── SEARCH ──────────────────────────────────────────────────
       React.createElement('div', { style: { position: 'relative', marginBottom: 12 } },
         React.createElement('input', {
           className: 'input', placeholder: '🔍  Search food...',
@@ -1458,37 +1586,77 @@ function FoodTracker() {
         })
       ),
 
-      // Category chips
-      React.createElement('div', { className: 'chip-group', style: { marginBottom: 16, overflowX: 'auto', flexWrap: 'nowrap', paddingBottom: 4 } },
+      // ── CATEGORY CHIPS ──────────────────────────────────────────
+      React.createElement('div', {
+        style: { display: 'flex', gap: 6, marginBottom: 16, overflowX: 'auto', flexWrap: 'nowrap', paddingBottom: 4, WebkitOverflowScrolling: 'touch', scrollbarWidth: 'none' }
+      },
         cats.map(c => React.createElement('div', {
-          key: c, className: `chip ${activecat === c ? 'active' : ''}`,
+          key: c, className: 'chip ' + (activecat === c ? 'active' : ''),
           onClick: () => setActiveCat(c), style: { flexShrink: 0 }
         }, c))
       ),
 
-      // Food list
-      React.createElement('div', { className: 'card' },
+      // ── FOOD LIST ────────────────────────────────────────────────────────
+      React.createElement('div', {
+        style: {
+          background: 'var(--card-bg)', border: '1px solid var(--card-border)',
+          borderRadius: 'var(--radius)', boxShadow: 'var(--shadow)',
+          backdropFilter: 'blur(12px)', WebkitBackdropFilter: 'blur(12px)',
+          overflow: 'hidden'
+        }
+      },
         filtered.length === 0
-          ? React.createElement('div', { style: { textAlign: 'center', padding: '24px 0', color: 'var(--text-muted)' } }, 'No foods found')
-          : filtered.map(food =>
-            React.createElement('div', { key: food.id, className: 'food-item', onClick: () => addFood(food) },
-              React.createElement('div', { className: 'food-icon' }, food.emoji),
-              React.createElement('div', { className: 'food-meta' },
-                React.createElement('div', { className: 'food-name' }, food.name),
-                React.createElement('div', { className: 'food-macros' },
-                  React.createElement('span', { className: 'macro' }, food.cal + ' cal'),
-                  React.createElement('span', { className: 'macro' }, '· P:' + food.pro + 'g'),
-                  React.createElement('span', { className: 'macro' }, '· C:' + food.carb + 'g'),
-                  React.createElement('span', { className: 'macro' }, '· F:' + food.fat + 'g'),
-                )
-              ),
-              React.createElement(ImpactTag, { impact: food.impact })
-            )
-          )
+          ? React.createElement('div', { style: { textAlign: 'center', padding: '24px 16px', color: 'var(--text-muted)' } }, 'No foods found')
+          : filtered.map(function(food, fi) {
+              var isExc = food.impact === 'excellent', isAvoid = food.impact === 'avoid';
+              return React.createElement('div', {
+                key: food.id,
+                style: {
+                  display: 'flex', alignItems: 'center', gap: 10,
+                  padding: '10px 16px',
+                  borderBottom: fi < filtered.length - 1 ? '1px solid var(--card-border)' : 'none',
+                  cursor: 'pointer', boxSizing: 'border-box', width: '100%'
+                },
+                onClick: function() { addFood(food); }
+              },
+                React.createElement('div', {
+                  className: 'food-icon',
+                  style: { flexShrink: 0, width: 42, height: 42 }
+                }, food.emoji),
+                React.createElement('div', { style: { flex: 1, minWidth: 0, overflow: 'hidden' } },
+                  React.createElement('div', {
+                    style: { fontSize: 14, fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }
+                  }, food.name),
+                  React.createElement('div', { style: { display: 'flex', gap: 4, marginTop: 2 } },
+                    React.createElement('span', { style: { fontSize: 10, color: 'var(--text-muted)', fontWeight: 600, whiteSpace: 'nowrap' } }, food.cal + ' cal'),
+                    React.createElement('span', { style: { fontSize: 10, color: 'var(--text-muted)', whiteSpace: 'nowrap' } }, 'P:' + food.pro + 'g'),
+                    React.createElement('span', { style: { fontSize: 10, color: 'var(--text-muted)', whiteSpace: 'nowrap' } }, 'C:' + food.carb + 'g'),
+                    React.createElement('span', { style: { fontSize: 10, color: 'var(--text-muted)', whiteSpace: 'nowrap' } }, 'F:' + food.fat + 'g')
+                  )
+                ),
+                React.createElement('span', {
+                  style: {
+                    flexShrink: 0,
+                    marginLeft: 6,
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: 3,
+                    padding: '3px 7px',
+                    borderRadius: 999,
+                    fontSize: 11,
+                    fontWeight: 700,
+                    whiteSpace: 'nowrap',
+                    background: isExc ? 'rgba(34,197,94,0.15)' : isAvoid ? 'rgba(239,68,68,0.15)' : 'rgba(245,158,11,0.15)',
+                    color: isExc ? 'var(--g600)' : isAvoid ? 'var(--red)' : '#b45309'
+                  }
+                }, isExc ? '🟢 Exc' : isAvoid ? '🔴 Avoid' : '🟡 Mod')
+              );
+            })
       )
     )
   );
 }
+
 
 function AICoach() {
   const [msgs, setMsgs] = useState([
