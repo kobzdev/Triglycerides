@@ -1,32 +1,18 @@
 {
-  "name": "LipidCoach",
-  "short_name": "LipidCoach",
-  "description": "Your personal cholesterol & lipid health coach",
+  "name": "TG Health Coach",
+  "short_name": "TG Coach",
+  "description": "Your personal coach to lower triglycerides, cholesterol, and improve overall health.",
   "start_url": "./index.html",
   "display": "standalone",
-  "background_color": "#052e16",
-  "theme_color": "#16a34a",
+  "background_color": "#0d1117",
+  "theme_color": "#1db954",
   "orientation": "portrait",
-  "scope": "./",
   "icons": [
-    {
-      "src": "icon-192.png",
-      "sizes": "192x192",
-      "type": "image/png",
-      "purpose": "any maskable"
-    },
-    {
-      "src": "icon-512.png",
-      "sizes": "512x512",
-      "type": "image/png",
-      "purpose": "any maskable"
-    },
-    {
-      "src": "apple-touch-icon.png",
-      "sizes": "180x180",
-      "type": "image/png"
-    }
+    { "src": "icons/icon-96.png",  "sizes": "96x96",   "type": "image/png", "purpose": "any maskable" },
+    { "src": "icons/icon-144.png", "sizes": "144x144", "type": "image/png", "purpose": "any maskable" },
+    { "src": "icons/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any maskable" },
+    { "src": "icons/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any maskable" }
   ],
-  "categories": ["health", "fitness", "medical"],
+  "categories": ["health", "fitness", "lifestyle"],
   "screenshots": []
 }
