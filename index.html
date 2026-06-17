@@ -478,7 +478,10 @@ textarea{resize:vertical;min-height:80px;line-height:1.5}
       <div class="setting-row"><div class="sr-lbl">Height</div><span class="text-green fw8">173 cm</span></div>
       <div class="setting-row"><div class="sr-lbl">Weight</div><span class="fw8">65 kg</span></div>
       <div class="setting-row"><div class="sr-lbl">Lifestyle</div><span class="fw8">Work From Home</span></div>
-      <div class="setting-row"><div class="sr-lbl">Medication</div><span class="fw8">Omacor Fish Oil</span></div>
+      <div class="setting-row"><div class="sr-lbl">Medication</div><span class="fw8">Rosuvastatin</span></div>
+      <div class="setting-row"><div class="sr-lbl">Duration</div><span class="chip y" id="med-duration-chip">3 months</span></div>
+      <div class="setting-row"><div class="sr-lbl">Started</div><span class="fw8" id="med-start-date">—</span></div>
+      <div class="setting-row"><div class="sr-lbl">End Date</div><span class="fw8 text-green" id="med-end-date">—</span></div>
     </div>
     <div class="card">
       <div class="card-title">Your Targets</div>
@@ -550,11 +553,12 @@ const STORE_KEY = 'tg_hc_v3';
 const BLANK = () => ({
   habits:{}, meals:{}, exercise:{}, labs:[], weights:{}, journal:[], missions:{},
   settings:{ dark:true, wfh:true, notif:false },
-  streak:{ current:0, longest:0, noAlcohol:0, exercise:0, fishOil:0 }
+  streak:{ current:0, longest:0, noAlcohol:0, exercise:0, medication:0 },
+  medication:{ name:'Rosuvastatin', startDate:null, durationMonths:3 }
 });
 
 const HABITS = [
-  {key:'fishOil',  icon:'🐟', label:'Fish Oil'},
+  {key:'medication',icon:'💊', label:'Rosuvastatin'},
   {key:'walk',     icon:'🚶', label:'Walk'},
   {key:'exercise', icon:'💪', label:'Exercise'},
   {key:'water',    icon:'💧', label:'3L Water'},
@@ -643,7 +647,7 @@ const MISSIONS = [
   {id:'walk',    icon:'🚶', text:'Walk at least 8,000 steps'},
   {id:'veggies', icon:'🥦', text:'Eat vegetables at least twice'},
   {id:'noSoda',  icon:'🥤', text:'Zero soda or sugary drinks'},
-  {id:'fishOil', icon:'🐟', text:'Take your Omacor Fish Oil'},
+  {id:'medication', icon:'💊', text:'Take your Rosuvastatin'},
   {id:'sleep',   icon:'😴', text:'Get 8 hours of sleep tonight'},
   {id:'noAlc',   icon:'🚫', text:'No alcohol today — you\'ve got this!'},
   {id:'exercise',icon:'💪', text:'Do any exercise for 20+ minutes'},
@@ -655,7 +659,7 @@ const ACHIEVEMENTS = [
   {id:'first',  emoji:'🎯', name:'First Step',       desc:'Log your first habit',          check:d=>Object.keys(d.habits).length>0},
   {id:'7ex',    emoji:'🏃', name:'7-Day Exercise',   desc:'Exercise streak of 7 days',     check:d=>d.streak.exercise>=7},
   {id:'30alc',  emoji:'🏅', name:'30 Days Sober',    desc:'30 days without alcohol',       check:d=>d.streak.noAlcohol>=30},
-  {id:'14fish', emoji:'🐟', name:'Fish Oil Hero',    desc:'14-day Fish Oil streak',        check:d=>d.streak.fishOil>=14},
+  {id:'14med',  emoji:'💊', name:'Statin Streak',     desc:'14-day Rosuvastatin streak',    check:d=>d.streak.medication>=14},
   {id:'7perf',  emoji:'⭐', name:'Perfect Week',     desc:'7 days logged in a row',        check:d=>d.streak.current>=7},
   {id:'labs5',  emoji:'🧪', name:'Lab Tracker',      desc:'Log 5 lab results',             check:d=>d.labs.length>=5},
   {id:'jrnl7',  emoji:'📝', name:'Journal Keeper',   desc:'Write 7 journal entries',       check:d=>d.journal.length>=7},
@@ -727,6 +731,7 @@ function renderScreen(name) {
   if (name==='labs')     renderLabs();
   if (name==='progress') renderProgress();
   if (name==='journal')  renderJournal();
+  if (name==='settings') renderMedicationCourse();
 }
 
 // ═══════════════════════════════════════════════════
@@ -1266,7 +1271,7 @@ function renderProgress() {
 
 function updateStreaks() {
   const keys = Object.keys(APP.habits).sort();
-  let cur=0, noAlc=0, exS=0, fishS=0;
+  let cur=0, noAlc=0, exS=0, medS=0;
   // Current full-habit streak
   for (let i=keys.length-1; i>=0; i--) {
     const h = APP.habits[keys[i]] || {};
@@ -1287,13 +1292,13 @@ function updateStreaks() {
   // Fish oil streak
   for (let i=keys.length-1; i>=0; i--) {
     const h=APP.habits[keys[i]]||{};
-    if (h.fishOil) fishS++; else { if(keys[i]!==today()) break; }
+    if (h.medication) medS++; else { if(keys[i]!==today()) break; }
   }
   APP.streak.current  = cur;
   APP.streak.longest  = Math.max(APP.streak.longest, cur);
   APP.streak.noAlcohol= noAlc;
   APP.streak.exercise = exS;
-  APP.streak.fishOil  = fishS;
+  APP.streak.medication = medS;
   saveData();
 }
 
@@ -1304,7 +1309,7 @@ function renderStreaks() {
     {num:s.longest,  label:'Best Streak',     em:'🏆'},
     {num:s.noAlcohol,label:'Days Sober',       em:'🚫'},
     {num:s.exercise, label:'Exercise Streak',  em:'💪'},
-    {num:s.fishOil,  label:'Fish Oil Streak',  em:'🐟'},
+    {num:s.medication,label:'Statin Streak',  em:'💊'},
     {num:Object.keys(APP.habits).length, label:'Total Days',em:'📅'},
   ];
   document.getElementById('streak-grid').innerHTML = items.map(it=>`
@@ -1436,6 +1441,28 @@ function applyTheme() {
 }
 
 // ═══════════════════════════════════════════════════
+// MEDICATION COURSE
+// ═══════════════════════════════════════════════════
+function renderMedicationCourse() {
+  const med = APP.medication;
+  if (!med || !med.startDate) return;
+  const start = new Date(med.startDate);
+  const end = new Date(start);
+  end.setMonth(end.getMonth() + (med.durationMonths || 3));
+  const startEl = document.getElementById('med-start-date');
+  const endEl = document.getElementById('med-end-date');
+  const chipEl = document.getElementById('med-duration-chip');
+  if (startEl) startEl.textContent = med.startDate;
+  if (endEl) endEl.textContent = end.toISOString().slice(0,10);
+  if (chipEl) {
+    const now = new Date();
+    const daysLeft = Math.ceil((end - now) / (1000*60*60*24));
+    chipEl.textContent = daysLeft > 0 ? `${med.durationMonths} months · ${daysLeft}d left` : 'Course complete';
+    chipEl.className = 'chip ' + (daysLeft > 0 ? 'y' : 'g');
+  }
+}
+
+// ═══════════════════════════════════════════════════
 // WFH TIMER
 // ═══════════════════════════════════════════════════
 let wfhTimer = null;
@@ -1477,7 +1504,7 @@ function toggleNotif() {
 function scheduleReminders() {
   const now = new Date();
   const reminders = [
-    {h:8, m:0, msg:'🐟 Take your Omacor Fish Oil now!'},
+    {h:8, m:0, msg:'💊 Take your Rosuvastatin now!'},
     {h:10,m:0, msg:'💧 Drink a big glass of water!'},
     {h:12,m:0, msg:'🥦 Add vegetables to your lunch!'},
     {h:15,m:0, msg:'🚶 Stand up and take a short walk!'},
@@ -1582,11 +1609,18 @@ window.addEventListener('DOMContentLoaded', ()=>{
     APP.labs.push({date:'2024-06-01',tg:369,tc:257,ldl:139,hdl:45,weight:65});
     saveData();
   }
+  // Seed medication start date if not set
+  if (!APP.medication) APP.medication = { name:'Rosuvastatin', startDate:null, durationMonths:3 };
+  if (!APP.medication.startDate) {
+    APP.medication.startDate = today();
+    saveData();
+  }
   applyTheme();
   document.getElementById('toggle-wfh').classList.toggle('on', APP.settings.wfh);
   document.getElementById('toggle-notif').classList.toggle('on', APP.settings.notif);
   updateStreaks();
   renderHome();
+  renderMedicationCourse();
   if (APP.settings.wfh)   startWFHTimer();
   if (APP.settings.notif) scheduleReminders();
 });
